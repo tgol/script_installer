@@ -57,9 +57,9 @@ function log_err
 {
 	if [ -f "${LOG_FILE}" ]
 	then
-		echo -e "$(date +"%Y-%m-%d %H:%M:%S") \\033[31mERROR: ${*}\\033[00m"
-	else
 		echo -e "$(date +"%Y-%m-%d %H:%M:%S") \\033[31mERROR: ${*}\\033[00m" | tee -a "${LOG_FILE}"
+	else
+		echo -e "$(date +"%Y-%m-%d %H:%M:%S") \\033[31mERROR: ${*}\\033[00m"
 	fi
 }
 
