@@ -188,7 +188,7 @@ do
 	case $opt in
 	"Installer") echo; break ;;
 	"Restaurer") echo; break ;;
-	"Abandonner") echo; echo "INFO: abandon"; exit 0 ;;
+	"Abandonner") echo; log_info "Abandon"; exit 0 ;;
 	*) echo Option invalide;;
 	esac
 done
