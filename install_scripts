@@ -9,15 +9,15 @@ set +u
 # mettre la variable suivante a false pour lancer le script a blanc
 ACTIVER_INSTALL=true
 
-NOM_DOSSIER_SAUVEGARDE="sauvegarde"
+DOSSIER_SAUVEGARDE=".sauvegardes/$(basename "${0}")"
 
 # fichier de logs
-NOM_FICHIER_LOGS="$(basename "${0}").log"
+FICHIER_LOGS=".logs/$(basename "${0}").log"
 
 SCRIPTS_A_INSTALLER=(
-	/path/to/script1
-	/path/to/script2
-	/path/to/etc
+/home/thomas/src/script_installer/test_dest/dir1/script1
+/home/thomas/src/script_installer/test_dest/dir1/dir11/script11
+/home/thomas/src/script_installer/test_dest/dir2/script2
 )
 
 ################################################################################
@@ -25,12 +25,12 @@ SCRIPTS_A_INSTALLER=(
 # suffix date secondes pour le fichier de logs
 DATEYYYYMMDD="$(date +"%Y%m%d")"
 DATEYYYYMMDDHHMMSS="$(date +"%Y%m%d%H%M%S")"
-LOG_FILE="${NOM_FICHIER_LOGS}_${DATEYYYYMMDDHHMMSS}"
+LOG_FILE="${FICHIER_LOGS}_${DATEYYYYMMDDHHMMSS}"
+mkdir -p "$(dirname "${LOG_FILE}")"
 true > "${LOG_FILE}"
 
 # suffixe date par defaut pour le repertoire de sauvegarde
-NOM_DOSSIER_SAUVEGARDE_DATE="${NOM_DOSSIER_SAUVEGARDE}_${DATEYYYYMMDD}"
-
+DOSSIER_SAUVEGARDE_DATE="${DOSSIER_SAUVEGARDE}_${DATEYYYYMMDD}"
 
 function log_info
 {
@@ -40,7 +40,6 @@ function log_info
 	else
 		echo -e "$(date +"%Y-%m-%d %H:%M:%S") INFO: ${*}"
 	fi
-	set +x
 }
 
 function log_warn
@@ -63,6 +62,8 @@ function log_err
 	fi
 }
 
+log_info "Debut"
+
 USAGE="\\n\
 	USAGE: $0 [restore [<repertoire>]]\\n\
 	\\n\
@@ -72,6 +73,7 @@ USAGE="\\n\
 	$0 restore:              sauvegarde et installation des scripts sauvegardes dans le dossier du jour\\n\
 	$0 restore <repertoire>: sauvegarde et installation des scripts sauvegardes dans le dossier specifie\\n\
 "
+
 # on se positionne dans le repertoire du script
 SCRIPTDIR="$( cd -P -- "$(dirname -- "$(command -v -- "$0")")" && pwd -P )"
 ! cd "${SCRIPTDIR}" && log_err "Echec d'acces au repertoire du script (${SCRIPTDIR})" && exit 1;
@@ -84,8 +86,8 @@ if [ $# -gt 0 ]; then
 	if [ "${1}" != "restore" ]; then echo -e "${USAGE}"; exit 1; fi
 	if [ "$#" = 1 ]
 	then
-		if [ ! -d "${NOM_DOSSIER_SAUVEGARDE_DATE}" ]; then
-			log_err "Le repertoire de restauration n'existe pas (${NOM_DOSSIER_SAUVEGARDE_DATE})" && exit 1;
+		if [ ! -d "${DOSSIER_SAUVEGARDE_DATE}" ]; then
+			log_err "Le repertoire de restauration n'existe pas (${DOSSIER_SAUVEGARDE_DATE})" && exit 1;
 		fi
 		ACTIVER_RESTORE=true;
 		ACTIVER_RESTORE_JOUR=true;
@@ -109,7 +111,7 @@ for conf_entry in "${SCRIPTS_A_INSTALLER[@]}"
 do
 	log_info "verification - ${conf_entry}"
 	if "${ACTIVER_RESTORE_JOUR}"; then
-		SCRIPTS[$i][0]="${NOM_DOSSIER_SAUVEGARDE_DATE}/$(basename "${conf_entry}")"
+		SCRIPTS[$i][0]="${DOSSIER_SAUVEGARDE_DATE}/$(basename "${conf_entry}")"
 	elif "${ACTIVER_RESTORE_ARG}"; then
 		SCRIPTS[$i][0]="${2}/$(basename "${conf_entry}")"
 	else
@@ -148,27 +150,27 @@ dim=$((i-1))
 
 # creation du repertoire de sauvegarde
 if ! "${ACTIVER_RESTORE}"; then
-	if [ -d "${NOM_DOSSIER_SAUVEGARDE_DATE}" ]; then
+	if [ -d "${DOSSIER_SAUVEGARDE_DATE}" ]; then
 		log_warn "sauvegarde - Le dossier du jour existe deja !";
-		NOM_DOSSIER_SAUVEGARDE_DATE="${NOM_DOSSIER_SAUVEGARDE}_$(date +"%Y%m%d%H%M%S")"
-		log_warn "sauvegarde - Sauvegarde des fichiers dans ${NOM_DOSSIER_SAUVEGARDE_DATE}";
-		log_warn "sauvegarde - Pour restaurer ce dossier plutot que celui du jour: ${0} restore ${NOM_DOSSIER_SAUVEGARDE_DATE}";
+		DOSSIER_SAUVEGARDE_DATE="${DOSSIER_SAUVEGARDE}_$(date +"%Y%m%d%H%M%S")"
+		log_warn "sauvegarde - Sauvegarde des fichiers dans ${DOSSIER_SAUVEGARDE_DATE}";
+		log_warn "sauvegarde - Pour restaurer ce dossier plutot que celui du jour: ${0} restore ${DOSSIER_SAUVEGARDE_DATE}";
 	fi
-
-	! mkdir "${NOM_DOSSIER_SAUVEGARDE_DATE}" && log_err "Echec de creation du repertoire de sauvegarde (${NOM_DOSSIER_SAUVEGARDE_DATE})" && exit 1;
+	log_info "sauvegarde - Repertoire [ ${DOSSIER_SAUVEGARDE_DATE} ]"
+	! mkdir -p "${DOSSIER_SAUVEGARDE_DATE}" && log_err "Echec de creation du repertoire de sauvegarde" && exit 1;
 
 	for j in {0..$dim}
 	do
-		log_info "sauvegarde - [${NOM_DOSSIER_SAUVEGARDE_DATE}] ${SCRIPTS[$j][1]}/${SCRIPTS[$j][0]}"
+		log_info "sauvegarde - ${SCRIPTS[$j][1]}/${SCRIPTS[$j][0]}"
 		if [ ! -f "${SCRIPTS[$j][1]}/${SCRIPTS[$j][0]}" ]; then
 			log_warn "sauvegarde - pas de sauvegarde pour ${SCRIPTS[$j][1]}/${SCRIPTS[$j][0]}";
 		elif "${ACTIVER_INSTALL}"; then
-			! cp "${SCRIPTS[$j][1]}/${SCRIPTS[$j][0]}" "${NOM_DOSSIER_SAUVEGARDE_DATE}" && log_err "Echec de la copie" && exit 1
+			! cp "${SCRIPTS[$j][1]}/${SCRIPTS[$j][0]}" "${DOSSIER_SAUVEGARDE_DATE}" && log_err "Echec de la copie" && exit 1
 		fi
 	done
 
 	# en mode inactif on supprime le dossier de sauvegarde vide
-	! "${ACTIVER_INSTALL}" && [ -d "${NOM_DOSSIER_SAUVEGARDE_DATE}" ] && rmdir "${NOM_DOSSIER_SAUVEGARDE_DATE}"
+	! "${ACTIVER_INSTALL}" && [ -d "${DOSSIER_SAUVEGARDE_DATE}" ] && rmdir "${DOSSIER_SAUVEGARDE_DATE}"
 fi
 
 
@@ -178,7 +180,7 @@ if ! "${ACTIVER_RESTORE}"; then
 	echo "Selectionner:"
 	options=("Installer" "Abandonner")
 else
-	"${ACTIVER_RESTORE_JOUR}" && echo "Restaurer ${NOM_DOSSIER_SAUVEGARDE_DATE} ?"
+	"${ACTIVER_RESTORE_JOUR}" && echo "Restaurer ${DOSSIER_SAUVEGARDE_DATE} ?"
 	"${ACTIVER_RESTORE_ARG}" && echo "Restaurer ${2} ?"
 	options=("Restaurer" "Abandonner")
 fi
@@ -196,10 +198,11 @@ done
 # installation des scripts
 for j in {0..$dim}
 do
-	log_info "installation - [${SCRIPTS[$j][1]}] ${SCRIPTS[$j][0]}"
+	log_info "installation - ${SCRIPTS[$j][1]}/${SCRIPTS[$j][0]}"
 	if [ "${ACTIVER_RESTORE}" ] && [ ! -f "${SCRIPTS[$j][0]}" ]; then
 		log_warn "installation - Pas de copie de ${SCRIPTS[$j][0]}"
 	elif "${ACTIVER_INSTALL}"; then
 		! cp "${SCRIPTS[$j][0]}" "${SCRIPTS[$j][1]}" && log_err "Echec de la copie" && exit 1
 	fi
 done
+log_info "Fin"
