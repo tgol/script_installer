@@ -1,0 +1,295 @@
+#!/bin/ksh
+
+# compatibilite avec le '-z' HP-UX
+set +u
+
+################################################################################
+# CONFIG
+################################################################################
+# mettre la variable suivante a false pour lancer le script a blanc
+ACTIVER_INSTALL=true
+
+NOM_DOSSIER_SAUVEGARDE=".sauvegardes"
+
+# fichier de logs
+FICHIER_LOGS=".logs/$(basename "${0}").log"
+
+# les fichiers doivent etre executables
+FICHIERS_EXECUTABLES=true
+
+FICHIERS_A_INSTALLER=(
+/home/thomas/src/script_installer/test_dest/dir1/script1
+/home/thomas/src/script_installer/test_dest/dir1/dir11/script11
+/home/thomas/src/script_installer/test_dest/dir2/script2
+/home/thomas/src/script_installer/test_dest/script2
+)
+
+################################################################################
+
+
+function init_fichier_logs
+{
+	[ ! -d "${1}" ] && log_err "${0} - echec initialisation fichier de logs dans le dossier ${1}" && return 1
+	LOG_FILE="${1}/${FICHIER_LOGS%.*}_${DATEYYYYMMDDHHMMSS}.log"
+	mkdir -p "$(dirname "${LOG_FILE}")"
+	true > "${LOG_FILE}"
+	log_notice "${0} - FICHIER = ${LOG_FILE}"
+}
+
+# sourcer cette fonction pour que le process parent se lance dans le dossier du script
+function cd_into_script_dir
+{
+	# on se positionne dans le repertoire du script
+	SCRIPTDIR="$( cd -P -- "$(dirname -- "$(command -v -- "$0")")" && pwd -P )"
+	! cd "${SCRIPTDIR}" && log_err "${0} - echec d'acces au repertoire du script (${SCRIPTDIR})" && return 1;
+}
+
+function log_info
+{
+	if [ -f "${LOG_FILE}" ]
+	then
+		echo -e "$(date +"%Y-%m-%d %H:%M:%S") INFO: ${*}" | tee -a "${LOG_FILE}"
+	else
+		echo -e "$(date +"%Y-%m-%d %H:%M:%S") INFO: ${*}"
+	fi
+}
+
+function log_notice
+{
+	if [ -f "${LOG_FILE}" ]
+	then
+		echo -e "$(date +"%Y-%m-%d %H:%M:%S") \\033[34mWARN: ${*}\\033[00m" | tee -a "${LOG_FILE}"
+	else
+		echo -e "$(date +"%Y-%m-%d %H:%M:%S") \\033[34mWARN: ${*}\\033[00m"
+	fi
+}
+
+function log_warn
+{
+	if [ -f "${LOG_FILE}" ]
+	then
+		echo -e "$(date +"%Y-%m-%d %H:%M:%S") \\033[33mWARN: ${*}\\033[00m" | tee -a "${LOG_FILE}"
+	else
+		echo -e "$(date +"%Y-%m-%d %H:%M:%S") \\033[33mWARN: ${*}\\033[00m"
+	fi
+}
+
+function log_err
+{
+	if [ -f "${LOG_FILE}" ]
+	then
+		echo -e "$(date +"%Y-%m-%d %H:%M:%S") \\033[31mERROR: ${*}\\033[00m" | tee -a "${LOG_FILE}"
+	else
+		echo -e "$(date +"%Y-%m-%d %H:%M:%S") \\033[31mERROR: ${*}\\033[00m"
+	fi
+}
+
+function backup_options
+{
+	case $# in
+	0)
+		return 0;;
+	1)
+		if [ "${1}" != "restore" ]; then echo -e "${USAGE}"; return 1; fi
+		ACTIVER_RESTORE=true;
+		return 0;;
+	2)
+		if [ "${1}" != "restore" ]; then echo -e "${USAGE}"; return 1; fi
+		ACTIVER_RESTORE=true
+		ACTIVER_RESTORE_CUSTOM=true
+		if [ -z "${2}" ]; then echo -e "${USAGE}"; return 1; fi
+		RESTORE_DIR_ARG="${2}"
+		return 0;;
+	*)
+		echo -e "${USAGE}";
+		return 1;;
+	esac
+}
+
+function set_sauvegarde_dir
+{
+	# suffixe date par defaut pour le repertoire de sauvegarde
+	[ ! -d "${1}" ] && log_err "${0} - echec initialisation repertoire de sauvegarde dans le dossier ${1}" && return 1
+	DATEYYYYMMDD="$(date +"%Y%m%d")"
+	DOSSIER_SAUVEGARDE="${1}/${NOM_DOSSIER_SAUVEGARDE}"
+	DOSSIER_SAUVEGARDE_DATE="${DOSSIER_SAUVEGARDE}/${SCRIPT_NAME}_${DATEYYYYMMDD}"
+
+	# si on fait une install et que le dossier du jour existe et contient des fichiers:
+	# on emet un warning et on change le nom du dossier de sauvegarde
+	if ! "${ACTIVER_RESTORE}" && [ -d "${DOSSIER_SAUVEGARDE_DATE}" ] && [ "$(ls -A "${DOSSIER_SAUVEGARDE_DATE}")" ]
+	then
+		log_warn "${0} - le dossier du jour existe deja !";
+		DOSSIER_SAUVEGARDE_DATE="${DOSSIER_SAUVEGARDE}/${SCRIPT_NAME}_${DATEYYYYMMDDHHMMSS}"
+		log_warn "${0} - sauvegarde des fichiers dans ${DOSSIER_SAUVEGARDE_DATE}";
+		log_warn "${0} - pour restaurer ce dossier plutot que celui du jour:";
+		log_warn "${0} - ./${SCRIPT_NAME} restore ${DOSSIER_SAUVEGARDE_DATE}";
+	fi
+
+	# si on restaure un dossier specifique on met a jour la variable contenant le path du dossier de sauvegarde
+	if "${ACTIVER_RESTORE_CUSTOM}"
+	then
+		if [ "${RESTORE_DIR_ARG#*/}" != "${RESTORE_DIR_ARG}" ]; then # contient '/'
+			if [ "${RESTORE_DIR_ARG:0:1}" = '/' ]; then # path absolu
+				DOSSIER_SAUVEGARDE_DATE="${RESTORE_DIR_ARG}"
+			else # path relatif
+				DOSSIER_SAUVEGARDE_DATE="${LAUNCH_DIR}/${RESTORE_DIR_ARG}"
+			fi
+		else # nom de dossier seul 
+			DOSSIER_SAUVEGARDE_DATE="${DOSSIER_SAUVEGARDE}/${RESTORE_DIR_ARG}"
+		fi
+
+	fi
+
+	# lorsque l'on restaure, on a besoin que le dossier soit present
+	if "${ACTIVER_RESTORE}"; then
+		if [ ! -d "${DOSSIER_SAUVEGARDE_DATE}" ]; then
+			log_info "${0} - sauvegardes disponibles:"
+			find "${DOSSIER_SAUVEGARDE}"/* -type d | while read -r entry; do log_info "$(basename "${entry}")"; done
+			log_err "${0} - le repertoire de restauration n'existe pas (${DOSSIER_SAUVEGARDE_DATE})" && return 1;
+		fi
+	fi
+	log_notice "${0} - REPERTOIRE = ${DOSSIER_SAUVEGARDE_DATE}";
+}
+
+function charger_config
+{
+	i=0
+
+	# verification de la config et construction du tableau de scripts a installer
+	for conf_entry in "${FICHIERS_A_INSTALLER[@]}"
+	do
+		log_info "${0} - ${conf_entry}"
+		if "${ACTIVER_RESTORE}"; then
+			FILES[$i][0]="${DOSSIER_SAUVEGARDE_DATE}/$(basename "${conf_entry}")"
+		else
+			FILES[$i][0]="$(basename "${conf_entry}")"
+		fi
+		FILES[$i][1]="$(dirname "${conf_entry}")"
+
+		# WARNINGS si le script de destination n'est pas present ou non executable
+		# ignorer si c'est un nouveau script sur le systeme
+		if [ ! -f "${conf_entry}" ]; then log_warn "${0} - ${conf_entry} n'est pas present sur le systeme";
+		elif "${FICHIERS_EXECUTABLES}" && [ ! -x "${conf_entry}" ]; then log_warn "${0} - ${conf_entry} n'est pas executable"; fi
+
+		# on a besoin d'un script executable a livrer et de son repertoire de destination
+		if [ ! -d "${FILES[$i][1]}" ]; then log_err "${0} - le dossier d'installation [${FILES[$i][1]}] n'existe pas"; return 1; fi
+		if [ ! -f "${FILES[$i][0]}" ]; then
+			if "${ACTIVER_RESTORE}"; then
+				log_warn "${0} - le script [${FILES[$i][0]}] n'est pas present dans le repertoire de restauration";
+			else
+				log_err "${0} - le script [${FILES[$i][0]}] n'est pas present dans le repertoire de livraison"; return 1;
+			fi
+		elif "${FICHIERS_EXECUTABLES}" && [ ! -x "${FILES[$i][0]}" ]; then
+			if "${ACTIVER_RESTORE}"; then
+				log_warn "${0} - le script [${FILES[$i][0]}] n'est pas executable dans le repertoire de restauration";
+			else
+				log_err "${0} - le script [${FILES[$i][0]}] n'est pas executable dans le repertoire de livraison"; return 1;
+			fi
+		fi
+
+		((i=i+1))
+	done
+	CONF_SZ=$((i-1))
+}
+
+
+function sauvegarde_fichiers
+{
+	# creation du repertoire de sauvegarde
+	! mkdir -p "${DOSSIER_SAUVEGARDE_DATE}" && log_err "Echec de creation du repertoire de sauvegarde" && return 1;
+
+	for j in {0..$CONF_SZ}
+	do
+		log_info "${0} - ${FILES[$j][1]}/${FILES[$j][0]}"
+		if [ ! -f "${FILES[$j][1]}/${FILES[$j][0]}" ]; then
+			log_warn "${0} - pas de sauvegarde pour ${FILES[$j][1]}/${FILES[$j][0]}";
+		elif "${ACTIVER_INSTALL}"; then
+			! cp "${FILES[$j][1]}/${FILES[$j][0]}" "${DOSSIER_SAUVEGARDE_DATE}" && log_err "Echec de la copie" && return 1
+		fi
+	done
+
+	# en mode inactif on supprime le dossier de sauvegarde vide
+	! "${ACTIVER_INSTALL}" && [ -d "${DOSSIER_SAUVEGARDE_DATE}" ] && rmdir "${DOSSIER_SAUVEGARDE_DATE}"
+	return 0
+}
+
+function user_confirm
+{
+	echo
+	if "${ACTIVER_RESTORE}"; then
+		echo "Restaurer ${DOSSIER_SAUVEGARDE_DATE} ?"
+		options=("Restaurer" "Abandonner")
+	else
+		echo "Selectionner:"
+		options=("Installer" "Abandonner")
+	fi
+
+	select opt in "${options[@]}"
+	do
+		case $opt in
+		"Installer") echo; break ;;
+		"Restaurer") echo; break ;;
+		"Abandonner") echo; log_info "Abandon"; exit 0 ;;
+		*) echo Option invalide;;
+		esac
+	done
+}
+
+function installation_fichiers
+{
+	for j in {0..$CONF_SZ}
+	do
+		log_info "${0} - ${FILES[$j][1]}/$(basename "${FILES[$j][0]}")"
+		if "${ACTIVER_RESTORE}" && [ ! -f "${FILES[$j][0]}" ]; then
+			log_warn "${0} - Pas de copie de ${FILES[$j][0]}"
+		elif "${ACTIVER_INSTALL}"; then
+			! cp "${FILES[$j][0]}" "${FILES[$j][1]}" && log_err "Echec de la copie" && return 1
+		fi
+	done
+}
+
+USAGE="\\n\
+	USAGE: $0 [restore [<repertoire>]]\\n\
+	\\n\
+	sauvegarde, installation, restauration de scripts
+	\\n\
+	$0:                      sauvegarde et installation des scripts\\n\
+	$0 restore:              sauvegarde et installation des scripts sauvegardes dans le dossier du jour\\n\
+	$0 restore <repertoire>: sauvegarde et installation des scripts sauvegardes dans le dossier specifie\\n\
+"
+
+ACTIVER_RESTORE=false
+ACTIVER_RESTORE_CUSTOM=false
+RESTORE_DIR_ARG=
+DOSSIER_SAUVEGARDE=
+LAUNCH_DIR="$(pwd)"
+DATEYYYYMMDDHHMMSS="$(date +"%Y%m%d%H%M%S")"
+SCRIPT_NAME="$(basename "${0}")"
+typeset -A FILES
+CONF_SZ=0
+
+. cd_into_script_dir
+
+# init fichier de logs
+init_fichier_logs "${PWD}" || exit 1
+
+# set options de backup
+backup_options "${@}" || exit 1
+
+# set dossier de backup
+set_sauvegarde_dir "${PWD}" || exit 1
+
+# verification de la config et construction du tableau FILES
+charger_config || exit 1
+
+# sauvegarde de l'existant:
+if ! "${ACTIVER_RESTORE}"; then
+	sauvegarde_fichiers || exit 1
+fi
+
+# confirmation utilisateur
+user_confirm
+
+# installation des scripts
+installation_fichiers
+
