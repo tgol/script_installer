@@ -168,8 +168,13 @@ function charger_config
 
 		# WARNINGS si le script de destination n'est pas present ou non executable
 		# ignorer si c'est un nouveau script sur le systeme
-		if [ ! -f "${conf_entry}" ]; then log_warn "${0} - ${conf_entry} n'est pas present sur le systeme";
-		elif "${FICHIERS_EXECUTABLES}" && [ ! -x "${conf_entry}" ]; then log_warn "${0} - ${conf_entry} n'est pas executable"; fi
+		if [ ! -f "${conf_entry}" ]
+		then
+			log_warn "${0} - ${conf_entry} n'est pas present sur le systeme";
+		elif "${FICHIERS_EXECUTABLES}" && [ ! -x "${conf_entry}" ]
+		then
+			log_warn "${0} - ${conf_entry} n'est pas executable";
+		fi
 
 		# on a besoin d'un script executable a livrer et de son repertoire de destination
 		if [ ! -d "${FILES[$i][1]}" ]; then log_err "${0} - le dossier d'installation [${FILES[$i][1]}] n'existe pas"; return 1; fi
@@ -204,7 +209,7 @@ function sauvegarde_fichiers
 		if [ ! -f "${FILES[$j][1]}/${FILES[$j][0]}" ]; then
 			log_warn "${0} - pas de sauvegarde pour ${FILES[$j][1]}/${FILES[$j][0]}";
 		elif "${ACTIVER_INSTALL}"; then
-			! cp "${FILES[$j][1]}/${FILES[$j][0]}" "${DOSSIER_SAUVEGARDE_DATE}" && log_err "Echec de la copie" && return 1
+			! cp -p "${FILES[$j][1]}/${FILES[$j][0]}" "${DOSSIER_SAUVEGARDE_DATE}" && log_err "Echec de la copie" && return 1
 		fi
 	done
 
@@ -239,11 +244,11 @@ function installation_fichiers
 {
 	for j in {0..$CONF_SZ}
 	do
-		log_info "${0} - ${FILES[$j][1]}/$(basename "${FILES[$j][0]}")"
 		if "${ACTIVER_RESTORE}" && [ ! -f "${FILES[$j][0]}" ]; then
 			log_warn "${0} - Pas de copie de ${FILES[$j][0]}"
 		elif "${ACTIVER_INSTALL}"; then
-			! cp "${FILES[$j][0]}" "${FILES[$j][1]}" && log_err "Echec de la copie" && return 1
+			log_info "${0} - copie de ${FILES[$j][0]} vers ${FILES[$j][1]}"
+			! cp -p "${FILES[$j][0]}" "${FILES[$j][1]}" && log_err "Echec de la copie" && return 1
 		fi
 	done
 }
@@ -291,5 +296,6 @@ fi
 user_confirm
 
 # installation des scripts
-installation_fichiers
+installation_fichiers || exit 1
 
+exit 0
