@@ -155,7 +155,7 @@ function charger_config
 {
 	i=0
 
-	# verification de la config et construction du tableau de scripts a installer
+	# verification de la config et construction du tableau de fichiers a installer
 	for conf_entry in "${FICHIERS_A_INSTALLER[@]}"
 	do
 		log_info "${0} - ${conf_entry}"
@@ -166,8 +166,8 @@ function charger_config
 		fi
 		FILES[$i][1]="$(dirname "${conf_entry}")"
 
-		# WARNINGS si le script de destination n'est pas present ou non executable
-		# ignorer si c'est un nouveau script sur le systeme
+		# WARNINGS si le fichier de destination n'est pas present (ou non executable)
+		# ignorer si c'est un nouveau fichier sur le systeme
 		if [ ! -f "${conf_entry}" ]
 		then
 			log_warn "${0} - ${conf_entry} n'est pas present sur le systeme";
@@ -176,19 +176,19 @@ function charger_config
 			log_warn "${0} - ${conf_entry} n'est pas executable";
 		fi
 
-		# on a besoin d'un script executable a livrer et de son repertoire de destination
+		# on a besoin d'un fichier (executable) a livrer et de son repertoire de destination
 		if [ ! -d "${FILES[$i][1]}" ]; then log_err "${0} - le dossier d'installation [${FILES[$i][1]}] n'existe pas"; return 1; fi
 		if [ ! -f "${FILES[$i][0]}" ]; then
 			if "${ACTIVER_RESTORE}"; then
-				log_warn "${0} - le script [${FILES[$i][0]}] n'est pas present dans le repertoire de restauration";
+				log_warn "${0} - le fichier [${FILES[$i][0]}] n'est pas present dans le repertoire de restauration";
 			else
-				log_err "${0} - le script [${FILES[$i][0]}] n'est pas present dans le repertoire de livraison"; return 1;
+				log_err "${0} - le fichier [${FILES[$i][0]}] n'est pas present dans le repertoire de livraison"; return 1;
 			fi
 		elif "${FICHIERS_EXECUTABLES}" && [ ! -x "${FILES[$i][0]}" ]; then
 			if "${ACTIVER_RESTORE}"; then
-				log_warn "${0} - le script [${FILES[$i][0]}] n'est pas executable dans le repertoire de restauration";
+				log_warn "${0} - le fichier [${FILES[$i][0]}] n'est pas executable dans le repertoire de restauration";
 			else
-				log_err "${0} - le script [${FILES[$i][0]}] n'est pas executable dans le repertoire de livraison"; return 1;
+				log_err "${0} - le fichier [${FILES[$i][0]}] n'est pas executable dans le repertoire de livraison"; return 1;
 			fi
 		fi
 
@@ -256,11 +256,11 @@ function installation_fichiers
 USAGE="\\n\
 	USAGE: $0 [restore [<repertoire>]]\\n\
 	\\n\
-	sauvegarde, installation, restauration de scripts
+	sauvegarde, installation, restauration de fichiers
 	\\n\
-	$0:                      sauvegarde et installation des scripts\\n\
-	$0 restore:              sauvegarde et installation des scripts sauvegardes dans le dossier du jour\\n\
-	$0 restore <repertoire>: sauvegarde et installation des scripts sauvegardes dans le dossier specifie\\n\
+	$0:                      sauvegarde et installation des fichiers\\n\
+	$0 restore:              sauvegarde et installation des fichiers sauvegardes dans le dossier du jour\\n\
+	$0 restore <repertoire>: sauvegarde et installation des fichiers sauvegardes dans le dossier specifie\\n\
 "
 
 ACTIVER_RESTORE=false
@@ -295,7 +295,7 @@ fi
 # confirmation utilisateur
 user_confirm
 
-# installation des scripts
+# installation des fichiers
 installation_fichiers || exit 1
 
 exit 0
